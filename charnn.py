@@ -221,7 +221,11 @@ class SequenceBatchSampler(torch.utils.data.Sampler):
         #  you can drop it.
         idx = None  # idx should be a 1-d list of indices.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        num_batches = len(self.dataset) // self.batch_size
+        tot_num_samples = num_batches * self.batch_size
+        idx_list = torch.tensor(list(range(tot_num_samples)))
+        idx = torch.transpose(torch.reshape(idx_list, (self.batch_size, num_batches)), 0, 1)
+        idx = torch.reshape(idx, (1, -1)).squeeze(dim=0).tolist()
         # ========================
         return iter(idx)
 
