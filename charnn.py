@@ -192,7 +192,24 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     #  necessary for this. Best to disable tracking for speed.
     #  See torch.no_grad().
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    h_s = None
+    sequence = start_sequence
+    n_chars_to_gen = n_chars - len(start_sequence)
+
+    # Loop over number of chars needed to be generated
+    for char_idx in range(n_chars_to_gen):
+        input = torch.unsqueeze(input=chars_to_onehot(sequence, char_to_idx), dim=0).to(dtype=torch.float)
+        y, h_s = model(input, h_s)
+
+        # Generate probabilities
+        out_prob = hot_softmax(y=y[0, -1, :], temperature=T)  # distribution of the last output char
+
+        # Sample from the generated distribution
+        num_samples = input.shape[-1]
+        sample_idx = torch.multinomial(input=out_prob, num_samples=num_samples)[0]
+        sample_char = idx_to_char[sample_idx.item()]
+        sequence = start_sequence[0:] + sample_char
+        out_text = out_text + sample_char
     # ========================
 
     return out_text
