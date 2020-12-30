@@ -152,7 +152,11 @@ def hot_softmax(y, dim=0, temperature=1.0):
     """
     # TODO: Implement based on the above.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    assert temperature != 0, 'Division by zero'
+
+    scaled_y = y / temperature
+    softmax = torch.nn.Softmax(dim=dim)
+    result = softmax(scaled_y)
     # ========================
     return result
 
@@ -242,7 +246,7 @@ class MultilayerGRU(nn.Module):
         """
         :param in_dim: Number of input dimensions (at each timestep).
         :param h_dim: Number of hidden state dimensions.
-        :param out_dim: Number of input dimensions (at each timestep).
+        :param out_dim: Number of output dimensions (at each timestep).
         :param n_layers: Number of layer in the model.
         :param dropout: Level of dropout to apply between layers. Zero
         disables.
@@ -272,7 +276,43 @@ class MultilayerGRU(nn.Module):
         #      then call self.register_parameter() on them. Also make
         #      sure to initialize them. See functions in torch.nn.init.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.dropout = dropout
+        self.out_dim = out_dim
+
+        for layer_idx in range(n_layers):
+            in_dim = in_dim if layer_idx == 0 else h_dim
+
+            # Define layer params
+            fc_xz = nn.Linear(in_features=in_dim, out_features=h_dim, bias=False)
+            fc_hz = nn.Linear(in_features=h_dim, out_features=h_dim, bias=True)
+            fc_xr = nn.Linear(in_features=in_dim, out_features=h_dim, bias=False)
+            fc_hr = nn.Linear(in_features=h_dim, out_features=h_dim, bias=True)
+            fc_xg = nn.Linear(in_features=in_dim, out_features=h_dim, bias=False)
+            fc_hg = nn.Linear(in_features=h_dim, out_features=h_dim, bias=True)
+            sigmoid = nn.Sigmoid()
+            tanh = nn.Tanh()
+
+            # Define a dictionary of layer params
+            layer_params = {'fc_xz_{}'.format(layer_idx): fc_xz,
+                            'fc_hz_{}'.format(layer_idx): fc_hz,
+                            'fc_xr_{}'.format(layer_idx): fc_xr,
+                            'fc_hr_{}'.format(layer_idx): fc_hr,
+                            'fc_xg_{}'.format(layer_idx): fc_xg,
+                            'fc_hg_{}'.format(layer_idx): fc_hg,
+                            'sigmoid_{}'.format(layer_idx): sigmoid,
+                            'tanh_{}'.format(layer_idx): tanh}
+            if dropout > 0:
+                layer_params['dropout_{}'.format(layer_idx)] = nn.Dropout2d(p=dropout)
+
+            for key, value in layer_params.items():
+                self.add_module(name=key, module=value)
+            self.layer_params.append(layer_params)
+
+        # Add output layer
+        fc_hy = nn.Linear(in_features=h_dim, out_features=out_dim, bias=True)
+        last_layer_params = {'fc_hy': fc_hy}
+        self.layer_params.append(last_layer_params)
+        self.add_module(name='fc_hy', module=fc_hy)
         # ========================
 
     def forward(self, input: Tensor, hidden_state: Tensor = None):
@@ -302,7 +342,6 @@ class MultilayerGRU(nn.Module):
                 layer_states.append(hidden_state[:, i, :])
 
         layer_input = input
-        layer_output = None
 
         # TODO:
         #  Implement the model's forward pass.
@@ -310,6 +349,43 @@ class MultilayerGRU(nn.Module):
         #  Tip: You can use torch.stack() to combine multiple tensors into a
         #  single tensor in a differentiable manner.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        assert self.n_layers > 0, 'number of layers is zero'
+
+        # Initialize layer_output and hidden_state
+        layer_output = torch.zeros(batch_size, seq_len, self.out_dim)
+        hidden_state = torch.zeros(batch_size, self.n_layers, self.h_dim)
+        for layer_idx in range(self.n_layers):
+            hidden_state[:, layer_idx, :] = layer_states[layer_idx]
+
+        # Loop over time (through the sequence)
+        for char_idx in range(seq_len):
+            xt = layer_input[:, char_idx, :]
+
+            # Loop over layers
+            for layer_idx in range(self.n_layers):
+                hidden_layer = hidden_state[:, layer_idx, :]
+                # Extract layer params
+                fc_xz = self.layer_params[layer_idx]['fc_xz_{}'.format(layer_idx)]
+                fc_hz = self.layer_params[layer_idx]['fc_hz_{}'.format(layer_idx)]
+                fc_xr = self.layer_params[layer_idx]['fc_xr_{}'.format(layer_idx)]
+                fc_hr = self.layer_params[layer_idx]['fc_hr_{}'.format(layer_idx)]
+                fc_xg = self.layer_params[layer_idx]['fc_xg_{}'.format(layer_idx)]
+                fc_hg = self.layer_params[layer_idx]['fc_hg_{}'.format(layer_idx)]
+                sigmoid = self.layer_params[layer_idx]['sigmoid_{}'.format(layer_idx)]
+                tanh = self.layer_params[layer_idx]['tanh_{}'.format(layer_idx)]
+
+                zt = sigmoid(fc_xz(xt) + fc_hz(hidden_layer))
+                rt = sigmoid(fc_xr(xt) + fc_hr(hidden_layer))
+                gt = tanh(fc_xg(xt) + fc_hg(rt * hidden_layer))
+                hidden_layer = zt * hidden_layer + (1-zt) * gt
+
+                if layer_idx > 0 and self.dropout > 0:
+                    dropout_layer = self.modules['dropout_{}'.format(layer_idx)]
+                    hidden_layer = dropout_layer(hidden_layer)
+
+                hidden_state[:, layer_idx, :] = xt = hidden_layer
+
+            fc_hy = self.layer_params[self.n_layers]['fc_hy']
+            layer_output[:, char_idx, :] = fc_hy(hidden_layer)
         # ========================
         return layer_output, hidden_state
