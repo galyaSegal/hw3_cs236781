@@ -134,9 +134,9 @@ def chars_to_labelled_samples(text: str, char_to_idx: dict, seq_len: int, device
 
     cut_embed_text = embed_text[:num_inx_to_use-1, :]
 
-    samples = torch.reshape(cut_embed_text, shape=(num_samples, seq_len, -1))
+    samples = torch.reshape(cut_embed_text, shape=(num_samples, seq_len, -1)).to(device)
     labels = torch.nonzero(embed_text[1:num_inx_to_use, :])[:, 1]
-    labels = labels.reshape(num_samples, seq_len)
+    labels = labels.reshape(num_samples, seq_len).to(device)
     # ========================
     return samples, labels
 
@@ -196,20 +196,22 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     sequence = start_sequence
     n_chars_to_gen = n_chars - len(start_sequence)
 
-    # Loop over number of chars needed to be generated
-    for char_idx in range(n_chars_to_gen):
-        input = torch.unsqueeze(input=chars_to_onehot(sequence, char_to_idx), dim=0).to(dtype=torch.float)
-        y, h_s = model(input, h_s)
+    with torch.no_grad():  # disable unnecessary gradient tracking for speed
+        # Loop over number of chars needed to be generated
+        for char_idx in range(n_chars_to_gen):
+            input = torch.unsqueeze(input=chars_to_onehot(sequence, char_to_idx), dim=0).to(dtype=torch.float,
+                                                                                            device=device)
+            y, h_s = model(input, h_s)
 
-        # Generate probabilities
-        out_prob = hot_softmax(y=y[0, -1, :], temperature=T)  # distribution of the last output char
+            # Generate probabilities
+            out_prob = hot_softmax(y=y[0, -1, :], temperature=T)  # distribution of the last output char
 
-        # Sample from the generated distribution
-        num_samples = input.shape[-1]
-        sample_idx = torch.multinomial(input=out_prob, num_samples=num_samples)[0]
-        sample_char = idx_to_char[sample_idx.item()]
-        sequence = start_sequence[0:] + sample_char
-        out_text = out_text + sample_char
+            # Sample from the generated distribution
+            num_samples = input.shape[-1]
+            sample_idx = torch.multinomial(input=out_prob, num_samples=num_samples)[0]
+            sample_char = idx_to_char[sample_idx.item()]
+            sequence = start_sequence[0:] + sample_char
+            out_text = out_text + sample_char
     # ========================
 
     return out_text
@@ -370,9 +372,6 @@ class MultilayerGRU(nn.Module):
 
         # Initialize layer_output and hidden_state
         layer_output = torch.zeros(batch_size, seq_len, self.out_dim)
-        hidden_state = torch.zeros(batch_size, self.n_layers, self.h_dim)
-        for layer_idx in range(self.n_layers):
-            hidden_state[:, layer_idx, :] = layer_states[layer_idx]
 
         # Loop over time (through the sequence)
         for char_idx in range(seq_len):
@@ -380,7 +379,7 @@ class MultilayerGRU(nn.Module):
 
             # Loop over layers
             for layer_idx in range(self.n_layers):
-                hidden_layer = hidden_state[:, layer_idx, :]
+                hidden_layer = layer_states[layer_idx]
                 # Extract layer params
                 fc_xz = self.layer_params[layer_idx]['fc_xz_{}'.format(layer_idx)]
                 fc_hz = self.layer_params[layer_idx]['fc_hz_{}'.format(layer_idx)]
@@ -400,9 +399,12 @@ class MultilayerGRU(nn.Module):
                     dropout_layer = self.modules['dropout_{}'.format(layer_idx)]
                     hidden_layer = dropout_layer(hidden_layer)
 
-                hidden_state[:, layer_idx, :] = xt = hidden_layer
+                layer_states[layer_idx] = hidden_layer
+                xt = hidden_layer
 
             fc_hy = self.layer_params[self.n_layers]['fc_hy']
             layer_output[:, char_idx, :] = fc_hy(hidden_layer)
+
+        hidden_state = torch.stack(layer_states, dim=1)
         # ========================
         return layer_output, hidden_state
