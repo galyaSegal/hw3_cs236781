@@ -397,7 +397,7 @@ class MultilayerGRU(nn.Module):
                 hidden_layer = zt * hidden_layer + (1-zt) * gt
 
                 if layer_idx > 0 and self.dropout > 0:
-                    dropout_layer = self.modules['dropout_{}'.format(layer_idx)]
+                    dropout_layer = self.layer_params[layer_idx]['dropout_{}'.format(layer_idx)]
                     hidden_layer = dropout_layer(hidden_layer)
 
                 layer_states[layer_idx] = hidden_layer
