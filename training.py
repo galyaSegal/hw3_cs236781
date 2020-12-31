@@ -61,7 +61,7 @@ class Trainer(abc.ABC):
         :return: A FitResult object containing train and test losses per epoch.
         """
         actual_num_epochs = 0
-        train_loss, train_acc, test_loss, test_acc = [], [], [], []
+        train_loss, train_acc, test_loss, test_acc, mean_test_loss = [], [], [], [], []
 
         best_acc = None
         epochs_without_improvement = 0
@@ -85,6 +85,7 @@ class Trainer(abc.ABC):
             if epoch % print_every == 0 or epoch == num_epochs - 1:
                 verbose = True
             self._print(f"--- EPOCH {epoch+1}/{num_epochs} ---", verbose)
+            kw['verbose'] = verbose
 
             # TODO:
             #  Train & evaluate for one epoch
@@ -93,7 +94,42 @@ class Trainer(abc.ABC):
             #  - Implement early stopping. This is a very useful and
             #    simple regularization technique that is highly recommended.
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+
+            # Train epoch
+            train_result = self.train_epoch(dl_train, **kw)
+            epoch_train_loss, epoch_train_acc = train_result
+            train_loss += epoch_train_loss
+            train_acc.append(epoch_train_acc)
+
+            # Test epoch
+            test_result = self.test_epoch(dl_test, **kw)
+            epoch_test_loss, epoch_test_acc = test_result
+            test_loss += epoch_test_loss
+            test_acc.append(epoch_test_acc)
+
+            actual_num_epochs += 1
+
+            # Early stopping
+            epoch_mean_test_loss = sum(epoch_test_loss) / len(epoch_test_loss)
+
+            if len(mean_test_loss) > 0:
+                if epoch_mean_test_loss > mean_test_loss[-1]:
+                    epochs_without_improvement += 1
+                else:
+                    epochs_without_improvement = 0
+
+            if early_stopping is not None and epochs_without_improvement >= early_stopping:
+                break
+
+            mean_test_loss.append(epoch_mean_test_loss)
+
+            # Checkpoints
+            if checkpoints:
+                if best_acc is None:
+                    best_acc = epoch_test_acc
+                if epoch_test_acc > best_acc:
+                    best_acc = epoch_test_acc
+                    save_checkpoint = True
             # ========================
 
             # Save model checkpoint if requested
@@ -229,7 +265,7 @@ class RNNTrainer(Trainer):
     def test_epoch(self, dl_test: DataLoader, **kw):
         # TODO: Implement modifications to the base method, if needed.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.hidden_state = None
         # ========================
         return super().test_epoch(dl_test, **kw)
 
@@ -267,7 +303,6 @@ class RNNTrainer(Trainer):
 
         # Calculate number of correct char predictions
         layer_output_idx = torch.argmax(input=layer_output, dim=2)  # size [B, S]
-
         num_correct = torch.sum(layer_output_idx == y)
         # ========================
 
@@ -288,7 +323,16 @@ class RNNTrainer(Trainer):
             #  - Loss calculation
             #  - Calculate number of correct predictions
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+
+            # Forward pass
+            layer_output, self.hidden_state = self.model(input=x, hidden_state=self.hidden_state)
+
+            # Calculate the total loss over the given sequence
+            loss = self.loss_fn(torch.transpose(layer_output, dim0=1, dim1=2), y)
+
+            # Calculate number of correct char predictions
+            layer_output_idx = torch.argmax(input=layer_output, dim=2)  # size [B, S]
+            num_correct = torch.sum(layer_output_idx == y)
             # ========================
 
         return BatchResult(loss.item(), num_correct.item() / seq_len)
