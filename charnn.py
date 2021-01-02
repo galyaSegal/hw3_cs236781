@@ -18,12 +18,21 @@ def char_maps(text: str):
         represented by it. The reverse of the above map.
 
     """
-    # TODO:
-    #  Create two maps as described in the docstring above.
-    #  It's best if you also sort the chars before assigning indices, so that
-    #  they're in lexical order.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    # Sorts the text by a lexical order
+    text = sorted(text)
+
+    char_to_idx = dict()
+    idx_to_char = dict()
+
+    idx = 0
+    for char in text:
+        # A condition to avoid duplicated characters
+        if char not in char_to_idx:
+            char_to_idx[char] = idx
+            idx_to_char[idx] = char
+            idx += 1
+
     # ========================
     return char_to_idx, idx_to_char
 
@@ -37,9 +46,14 @@ def remove_chars(text: str, chars_to_remove):
         - text_clean: the text after removing the chars.
         - n_removed: Number of chars removed.
     """
-    # TODO: Implement according to the docstring.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    text_clean = text
+
+    for char in chars_to_remove:
+        if char in text_clean:
+            text_clean = text_clean.replace(char, "")
+
+    n_removed = len(text) - len(text_clean)
     # ========================
     return text_clean, n_removed
 
@@ -57,9 +71,18 @@ def chars_to_onehot(text: str, char_to_idx: dict) -> Tensor:
     and D is the number of unique chars in the sequence. The dtype of the
     returned tensor will be torch.int8.
     """
-    # TODO: Implement the embedding.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+
+    D = len(char_to_idx)
+    N = len(text)
+
+    # Initialize the one hot sequence tensor with zeros
+    result = torch.zeros(N, D, dtype=torch.int8)
+
+    # Ignite the one hot sequence tensor's rows
+    for i, char in enumerate(text):
+        result[i, char_to_idx[char]] = 1
+
     # ========================
     return result
 
@@ -74,9 +97,16 @@ def onehot_to_chars(embedded_text: Tensor, idx_to_char: dict) -> str:
     :return: A string containing the text sequence represented by the
     embedding.
     """
-    # TODO: Implement the reverse-embedding.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    # Initialize the result string
+    result = ""
+
+    # Gets the indices that corresponds to the one hot representations
+    reversed_one_hot = torch.argmax(embedded_text, dim=1)
+
+    # Builds the result string
+    for idx in reversed_one_hot:
+        result += idx_to_char[idx.item()]
     # ========================
     return result
 
@@ -97,15 +127,20 @@ def chars_to_labelled_samples(text: str, char_to_idx: dict, seq_len: int, device
     the number of created samples, S is the seq_len and V is the embedding
     dimension.
     """
-    # TODO:
-    #  Implement the labelled samples creation.
-    #  1. Embed the given text.
-    #  2. Create the samples tensor by splitting to groups of seq_len.
-    #     Notice that the last char has no label, so don't use it.
-    #  3. Create the labels tensor in a similar way and convert to indices.
-    #  Note that no explicit loops are required to implement this function.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    S = seq_len
+    V = len(char_to_idx)
+    N = (len(text) - 1) // S
+
+    embedded_text = chars_to_onehot(text, char_to_idx)
+
+    labels = torch.argmax(embedded_text, dim=1).to(device)
+    # Shifts the labels to the left and reshape it to fit the samples
+    labels = labels[1:S * N + 1].view(N, S)
+
+    # Truncate and reshape the embedded text into sampled sequences
+    samples = embedded_text[:S * N, :].view(N, S, V).to(device)
+
     # ========================
     return samples, labels
 
@@ -121,7 +156,9 @@ def hot_softmax(y, dim=0, temperature=1.0):
     """
     # TODO: Implement based on the above.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    softmax = nn.Softmax(dim=dim)
+    y = y / temperature
+    result = softmax(y)
     # ========================
     return result
 
@@ -145,19 +182,24 @@ def generate_from_model(model, start_sequence, n_chars, char_maps, T):
     char_to_idx, idx_to_char = char_maps
     out_text = start_sequence
 
-    # TODO:
-    #  Implement char-by-char text generation.
-    #  1. Feed the start_sequence into the model.
-    #  2. Sample a new char from the output distribution of the last output
-    #     char. Convert output to probabilities first.
-    #     See torch.multinomial() for the sampling part.
-    #  3. Feed the new char into the model.
-    #  4. Rinse and Repeat.
-    #  Note that tracking tensor operations for gradient calculation is not
-    #  necessary for this. Best to disable tracking for speed.
-    #  See torch.no_grad().
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    with torch.no_grad():
+        # Calculates the number of characters to generate
+        n_gen_chars = n_chars - len(start_sequence)
+
+        input = chars_to_onehot(start_sequence, char_to_idx).unsqueeze(dim=0).to(device, dtype=torch.float)
+        h = None
+        for char in range(n_gen_chars):
+
+            # Generates a new output given the previous hidden state
+            outputs, h = model(input, hidden_state=h)
+            chars_distribution = hot_softmax(outputs, dim=2, temperature=T)[:, -1, :]
+
+            # Sample from the predicted distribution and convert it into a character
+            predicted = idx_to_char[torch.multinomial(chars_distribution, 1)[0].item()]
+
+            out_text += predicted
+            input = chars_to_onehot(predicted, char_to_idx).unsqueeze(dim=0).to(device, dtype=torch.float)
     # ========================
 
     return out_text
@@ -180,17 +222,16 @@ class SequenceBatchSampler(torch.utils.data.Sampler):
         self.batch_size = batch_size
 
     def __iter__(self) -> Iterator[int]:
-        # TODO:
-        #  Return an iterator of indices, i.e. numbers in range(len(dataset)).
-        #  dataset and represents one  batch.
-        #  The indices must be generated in a way that ensures
-        #  that when a batch of size self.batch_size of indices is taken, samples in
-        #  the same index of adjacent batches are also adjacent in the dataset.
-        #  In the case when the last batch can't have batch_size samples,
-        #  you can drop it.
-        idx = None  # idx should be a 1-d list of indices.
+        idx = []  # idx should be a 1-d list of indices.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        n_samples = len(self.dataset)
+        # Calculates the number of batches
+        n_batches = n_samples // self.batch_size
+
+        # Builds a contiguous batches' indices list
+        for i in range(n_batches):
+            idx.extend([ix for ix in range(i, n_batches * self.batch_size, n_batches)])
+
         # ========================
         return iter(idx)
 
@@ -221,24 +262,40 @@ class MultilayerGRU(nn.Module):
         self.n_layers = n_layers
         self.layer_params = []
 
-        # TODO: Create the parameters of the model for all layers.
-        #  To implement the affine transforms you can use either nn.Linear
-        #  modules (recommended) or create W and b tensor pairs directly.
-        #  Create these modules or tensors and save them per-layer in
-        #  the layer_params list.
-        #  Important note: You must register the created parameters so
-        #  they are returned from our module's parameters() function.
-        #  Usually this happens automatically when we assign a
-        #  module/tensor as an attribute in our module, but now we need
-        #  to do it manually since we're not assigning attributes. So:
-        #    - If you use nn.Linear modules, call self.add_module() on them
-        #      to register each of their parameters as part of your model.
-        #    - If you use tensors directly, wrap them in nn.Parameter() and
-        #      then call self.register_parameter() on them. Also make
-        #      sure to initialize them. See functions in torch.nn.init.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.dropout = nn.Dropout(dropout)
+        self.y = nn.Linear(self.h_dim, self.out_dim)
+
+        # creates the gates components/modules for each layer
+        for layer_idx in range(self.n_layers):
+            if layer_idx != 0:
+                gates = self.build_gates(self.h_dim)
+            else:
+                gates = self.build_gates(self.in_dim)
+
+            # Registers the created sub modules' parameters
+            for gate, modules in gates.items():
+                for module_name, module in modules.items():
+                    self.add_module(name="W_{}{}_{}".format(module_name, gate, layer_idx), module=module)
+
+            self.layer_params.append(gates)
         # ========================
+
+    def build_gates(self, in_dim):
+        """Build a GRU's gates sub_modules"""
+
+        activations = {"z": nn.Sigmoid(), "r": nn.Sigmoid(), "g": nn.Tanh()}
+        gates = {
+            gate: {
+                "x": nn.Linear(in_features=in_dim,
+                               out_features=self.h_dim, bias=False),
+                "h": nn.Linear(in_features=self.h_dim,
+                               out_features=self.h_dim),
+                "activation": activations[gate]
+            } for gate in ["z", "r", "g"]
+        }
+
+        return gates
 
     def forward(self, input: Tensor, hidden_state: Tensor = None):
         """
@@ -267,14 +324,35 @@ class MultilayerGRU(nn.Module):
                 layer_states.append(hidden_state[:, i, :])
 
         layer_input = input
-        layer_output = None
+        layer_output = []
 
-        # TODO:
-        #  Implement the model's forward pass.
-        #  You'll need to go layer-by-layer from bottom to top (see diagram).
-        #  Tip: You can use torch.stack() to combine multiple tensors into a
-        #  single tensor in a differentiable manner.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+
+        for t_step in range(seq_len):
+            x_t = layer_input[:, t_step, :]
+
+            for layer_idx, params in enumerate(self.layer_params):
+                # Gets the previous h_t
+                h_t = layer_states[layer_idx]
+
+                z_params, r_params, g_params = params.values()
+
+                # Activates the gates
+                z_t = z_params["activation"](z_params["x"](x_t) + z_params["h"](h_t))
+                r_t = r_params["activation"](r_params["x"](x_t) + r_params["h"](h_t))
+                g_t = g_params["activation"](g_params["x"](x_t) + g_params["h"](r_t * h_t))
+
+                h_t = self.dropout(z_t * h_t + (1 - z_t) * g_t)
+
+                # Propagates h_t through time/layers
+                x_t = h_t
+                layer_states[layer_idx] = h_t
+
+            # Saves the output for the current time step
+            layer_output.append(self.y(x_t))
+
+        layer_output = torch.stack(layer_output, dim=1)
+        hidden_state = torch.stack(layer_states, dim=1)
+
         # ========================
         return layer_output, hidden_state

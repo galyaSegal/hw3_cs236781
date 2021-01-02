@@ -11,19 +11,16 @@ math (delimited with $$).
 
 def part1_rnn_hyperparams():
     hypers = dict(
-        batch_size=0,
-        seq_len=0,
-        h_dim=0,
-        n_layers=0,
-        dropout=0,
-        learn_rate=0.0,
-        lr_sched_factor=0.0,
-        lr_sched_patience=0,
+        batch_size=200,
+        seq_len=10,
+        h_dim=100,
+        n_layers=3,
+        dropout=0.1,
+        learn_rate=0.001,
+        lr_sched_factor=0.1,
+        lr_sched_patience=5,
     )
-    # TODO: Set the hyperparameters to train the model.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
+
     return hypers
 
 
