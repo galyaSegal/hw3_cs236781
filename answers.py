@@ -11,18 +11,17 @@ math (delimited with $$).
 
 def part1_rnn_hyperparams():
     hypers = dict(
-        batch_size=0,
-        seq_len=0,
-        h_dim=0,
-        n_layers=0,
-        dropout=0,
-        learn_rate=0.0,
+        batch_size=10,
+        seq_len=20,
+        h_dim=32,
+        n_layers=3,
+        dropout=0.2,
+        learn_rate=0.01,
         lr_sched_factor=0.0,
-        lr_sched_patience=0,
+        lr_sched_patience=20,
     )
     # TODO: Set the hyperparameters to train the model.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
     # ========================
     return hypers
 
@@ -39,54 +38,39 @@ def part1_generation_params():
 
 part1_q1 = r"""
 **Your answer:**
-
-
-Write your answer using **markdown** and $\LaTeX$:
-```python
-# A code block
-a = 2
-```
-An equation: $e^{i\pi} -1 = 0$
-
+We use sequences for two main reasons:
+1. It allows us to train in batches, which is more efficient and therefore is much faster.
+2. Storing the computational graphs is required only through a single sequence. Calculating the gradients through the 
+whole text is impractical and also may cause exploding / vanishing gradients. 
 """
 
 part1_q2 = r"""
 **Your answer:**
-
-
-Write your answer using **markdown** and $\LaTeX$:
-```python
-# A code block
-a = 2
-```
-An equation: $e^{i\pi} -1 = 0$
+During the generation process, the hidden state is propagated through the whole process and so longer 'memory' is 
+established.
 
 """
 
 part1_q3 = r"""
 **Your answer:**
-
-
-Write your answer using **markdown** and $\LaTeX$:
-```python
-# A code block
-a = 2
-```
-An equation: $e^{i\pi} -1 = 0$
-
+The batches were selected in a way that causality is maintained, and therefore we manage to improve logical causation
+ during the training process. Shuffling would ruin that order.
 """
 
 part1_q4 = r"""
 **Your answer:**
-
-
-Write your answer using **markdown** and $\LaTeX$:
-```python
-# A code block
-a = 2
-```
-An equation: $e^{i\pi} -1 = 0$
-
+1. During the training process, we aim to learn the generalized distribution of the chars in the text and therefore 
+choose the temperature to be 1.0. \n
+When sampling during the generation process, we wish to choose the char which is the most probable. Lowering the 
+temperature results in greater differences between the probabilities, which allows a more significant selection of the
+ next character.
+2. A high temperature will lower the differences in the probabilities of each char. Very high temperature can result in 
+practically uniform distribution, and thus the learning process will have very little effect on the chars generated. \n
+The text generated with T > 0.8 was less coherent, but looked more like a play.
+3. A low temperature will result in greater differences in the probabilities. The text generated with T < 0.2 was more 
+coherent word-wise, but looked less like a play. Moreover, the word 'the' appeared significantly more times. We assume
+that when the temperature is very low, the model tends to choose the most probable and frequent words, like 'the'. On 
+the other hand, less frequent words which define the structure of the play and are much less probable don't appear. 
 """
 # ==============
 
