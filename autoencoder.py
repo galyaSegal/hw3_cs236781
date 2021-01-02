@@ -19,7 +19,28 @@ class EncoderCNN(nn.Module):
         #  use pooling or only strides, use any activation functions,
         #  use BN or Dropout, etc.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        # Model architecture
+        channels = [in_channels, 64, 128, 256, out_channels]
+        kernel_size = (5, 5)
+        padding = 0
+        dilation = 2
+        batch_norm = True
+        dropout = 0.2
+
+        # Create the layers
+        for channel_idx in range(len(channels)-1):
+            in_features, out_features = channels[channel_idx], channels[channel_idx+1]
+            layer = nn.Conv2d(in_channels=in_features, out_channels=out_features,
+                              kernel_size=kernel_size, padding=padding, dilation=dilation)
+            modules.append(layer)
+
+            if batch_norm:
+                batch_norm_layer = nn.BatchNorm2d(num_features=out_features)
+                modules.append(batch_norm_layer)
+
+            if dropout > 0:
+                dropout_layer = nn.Dropout2d(p=dropout)
+                modules.append(dropout_layer)
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -42,7 +63,29 @@ class DecoderCNN(nn.Module):
         #  output should be a batch of images, with same dimensions as the
         #  inputs to the Encoder were.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        # Model architecture
+        channels = [in_channels, 256, 128, 64, out_channels]
+        kernel_size = (5, 5)
+        padding = 0
+        dilation = 2
+        batch_norm = True
+        dropout = 0.2
+        stride = 1
+
+        # Create the layers
+        for channel_idx in range(len(channels)-1):
+            in_features, out_features = channels[channel_idx], channels[channel_idx+1]
+            layer = nn.ConvTranspose2d(in_channels=in_features, out_channels=out_features,
+                                       kernel_size=kernel_size, padding=padding, dilation=dilation, stride=stride)
+            modules.append(layer)
+
+            if batch_norm:
+                batch_norm_layer = nn.BatchNorm2d(num_features=out_features)
+                modules.append(batch_norm_layer)
+
+            if dropout > 0:
+                dropout_layer = nn.Dropout2d(p=dropout)
+                modules.append(dropout_layer)
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -70,7 +113,13 @@ class VAE(nn.Module):
 
         # TODO: Add more layers as needed for encode() and decode().
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        # Add linear layers for encoder (mu and sigma)
+        self.layer_w_mu = nn.Linear(in_features=n_features, out_features=self.z_dim, bias=True)
+        self.layer_w_sigma2 = nn.Linear(in_features=n_features, out_features=self.z_dim)
+        self.flatten_layer = nn.Flatten()
+        # Add layers for the encoder
+        self.z_hbar = nn.Linear(in_features=self.z_dim, out_features=n_features)
+        # self.unflatten_layer = nn.Unflatten(dim=0, unflattened_size=self.features_shape)  # needed pytorch = 1.7.0
         # ========================
 
     def _check_features(self, in_size):
@@ -91,7 +140,14 @@ class VAE(nn.Module):
         #     log_sigma2 (mean and log variance) of q(Z|x).
         #  2. Apply the reparametrization trick to obtain z.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        # Add a flattening layer
+        h = self.flatten_layer(self.features_encoder(x))
+        mu = self.layer_w_mu(h)
+        log_sigma2 = self.layer_w_sigma2(h)
+
+        # Sample u from normal distribution N(0,1)
+        u = torch.randn(2)
+        z = mu + u * torch.exp(0.5 * log_sigma2)
         # ========================
 
         return z, mu, log_sigma2
@@ -102,7 +158,10 @@ class VAE(nn.Module):
         #  1. Convert latent z to features h with a linear layer.
         #  2. Apply features decoder.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        h_bar = self.z_hbar(z)
+        # h_bar = self.unflatten_layer(h_bar) # needed pytorch = 1.7.0 for that
+        h_bar = torch.reshape(h_bar, [-1, *self.features_shape])
+        x_rec = self.features_decoder(h_bar)
         # ========================
 
         # Scale to [-1, 1] (same dynamic range as original images).
@@ -147,14 +206,26 @@ def vae_loss(x, xr, z_mu, z_log_sigma2, x_sigma2):
         - The KL divergence loss term
     all three are scalars, averaged over the batch dimension.
     """
-    loss, data_loss, kldiv_loss = None, None, None
+    loss, data_loss, kldiv_loss = None, [], []
     # TODO:
     #  Implement the VAE pointwise loss calculation.
     #  Remember:
     #  1. The covariance matrix of the posterior is diagonal.
     #  2. You need to average over the batch dimension.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    n_batches = x.shape[0]
+    dx = torch.numel(x) / n_batches
+    dz = z_mu.shape[1]
+
+    x = torch.reshape(x, [n_batches, -1])  # size [N, dx]
+    xr = torch.reshape(xr, [n_batches, -1])  # size [N, dx]
+    z_sigma2 = torch.exp(z_log_sigma2)  # size [N, dx]
+    trace = torch.sum(z_sigma2, dim=1)  # size [N, dx]
+    det = torch.prod(z_sigma2, dim=1)  # size [N, dx]
+
+    data_loss = torch.mean(torch.sum((x - xr) ** 2, dim=1) / (x_sigma2 * dx))
+    kldiv_loss = torch.mean(trace + torch.sum(z_mu ** 2, dim=1) - dz - torch.log(det))
+    loss = data_loss + kldiv_loss
     # ========================
 
     return loss, data_loss, kldiv_loss
