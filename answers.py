@@ -25,12 +25,9 @@ def part1_rnn_hyperparams():
 
 
 def part1_generation_params():
-    start_seq = ""
+    start_seq = "Mr. and Mrs. Dursley of number four, Privet Drive, were proud to say that they were perfectly normal, thank you very much."
     temperature = 0.0001
-    # TODO: Tweak the parameters to generate a literary masterpiece.
-    # ====== YOUR CODE: ======
-    raise NotImplementedError()
-    # ========================
+
     return start_seq, temperature
 
 
