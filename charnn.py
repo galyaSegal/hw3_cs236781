@@ -265,6 +265,8 @@ class MultilayerGRU(nn.Module):
         # ====== YOUR CODE: ======
         self.dropout = nn.Dropout(dropout)
         self.y = nn.Linear(self.h_dim, self.out_dim)
+        self.sigmoid = nn.Sigmoid()
+        self.tanh = nn.Tanh()
 
         # creates the gates components/modules for each layer
         for layer_idx in range(self.n_layers):
@@ -284,14 +286,12 @@ class MultilayerGRU(nn.Module):
     def build_gates(self, in_dim):
         """Build a GRU's gates sub_modules"""
 
-        activations = {"z": nn.Sigmoid(), "r": nn.Sigmoid(), "g": nn.Tanh()}
         gates = {
             gate: {
                 "x": nn.Linear(in_features=in_dim,
                                out_features=self.h_dim, bias=False),
                 "h": nn.Linear(in_features=self.h_dim,
-                               out_features=self.h_dim),
-                "activation": activations[gate]
+                               out_features=self.h_dim)
             } for gate in ["z", "r", "g"]
         }
 
@@ -338,9 +338,9 @@ class MultilayerGRU(nn.Module):
                 z_params, r_params, g_params = params.values()
 
                 # Activates the gates
-                z_t = z_params["activation"](z_params["x"](x_t) + z_params["h"](h_t))
-                r_t = r_params["activation"](r_params["x"](x_t) + r_params["h"](h_t))
-                g_t = g_params["activation"](g_params["x"](x_t) + g_params["h"](r_t * h_t))
+                z_t = self.sigmoid(z_params["x"](x_t) + z_params["h"](h_t))
+                r_t = self.sigmoid(r_params["x"](x_t) + r_params["h"](h_t))
+                g_t = self.tanh(g_params["x"](x_t) + g_params["h"](r_t * h_t))
 
                 h_t = self.dropout(z_t * h_t + (1 - z_t) * g_t)
 
