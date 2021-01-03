@@ -146,7 +146,7 @@ class VAE(nn.Module):
         log_sigma2 = self.layer_w_sigma2(h)
 
         # Sample u from normal distribution N(0,1)
-        u = torch.randn(2)
+        u = torch.randn(self.z_dim)
         z = mu + u * torch.exp(0.5 * log_sigma2)
         # ========================
 
