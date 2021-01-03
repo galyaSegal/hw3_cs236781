@@ -180,7 +180,13 @@ class VAE(nn.Module):
             #    Instead of sampling from N(psi(z), sigma2 I), we'll just take
             #    the mean, i.e. psi(z).
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+            z_shape = [1, self.z_dim]
+            # Loop over number of samples needed
+            for sample_idx in range(n):
+                z = torch.randn(*z_shape)
+                x_sample = self.decode(z)
+                samples.append(x_sample)
+            samples = torch.cat(samples, dim=0)
             # ========================
 
         # Detach and move to CPU for display purposes
