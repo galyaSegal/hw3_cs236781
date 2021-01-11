@@ -19,7 +19,24 @@ class EncoderCNN(nn.Module):
         #  use pooling or only strides, use any activation functions,
         #  use BN or Dropout, etc.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        nof1x1 = 100
+        nof3x3 = 100
+        nof2x2 = 200
+        dropout = 0.3
+
+        modules = [nn.Conv2d(in_channels=in_channels, out_channels=nof1x1, kernel_size=3, padding=2, stride=2),
+                   nn.BatchNorm2d(nof1x1),
+                   nn.LeakyReLU(),
+                   nn.Conv2d(in_channels=nof1x1, out_channels=nof3x3, kernel_size=3, padding=2, stride=2),
+                   nn.BatchNorm2d(nof3x3),
+                   nn.LeakyReLU(),
+                   nn.Conv2d(in_channels=nof3x3, out_channels=nof2x2, kernel_size=5, padding=2, stride=2),
+                   nn.BatchNorm2d(nof2x2),
+                   nn.LeakyReLU(),
+                   nn.Dropout(dropout),
+                   nn.Conv2d(nof2x2, out_channels, kernel_size=5, padding=2, stride=2),
+                   nn.LeakyReLU()]
+
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -42,7 +59,25 @@ class DecoderCNN(nn.Module):
         #  output should be a batch of images, with same dimensions as the
         #  inputs to the Encoder were.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+
+        nof1x1 = 100
+        nof3x3 = 100
+        nof2x2 = 200
+        dropout = 0.3
+
+        modules = [nn.ConvTranspose2d(in_channels=in_channels, out_channels=nof2x2, kernel_size=5, padding=2, stride=2),
+                   nn.BatchNorm2d(nof2x2),
+                   nn.ReLU(),
+                   nn.ConvTranspose2d(in_channels=nof2x2, out_channels=nof3x3, kernel_size=5, padding=2, stride=2, output_padding=1),
+                   nn.BatchNorm2d(nof3x3),
+                   nn.ReLU(),
+                   nn.ConvTranspose2d(in_channels=nof3x3, out_channels=nof1x1, kernel_size=3, padding=2, stride=2),
+                   nn.BatchNorm2d(nof1x1),
+                   nn.ReLU(),
+                   nn.Dropout(dropout),
+                   nn.ConvTranspose2d(in_channels=nof1x1, out_channels=out_channels, kernel_size=3, padding=2, stride=2, output_padding=1)
+                   ]
+
         # ========================
         self.cnn = nn.Sequential(*modules)
 
@@ -70,7 +105,9 @@ class VAE(nn.Module):
 
         # TODO: Add more layers as needed for encode() and decode().
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        self.w_hmu = nn.Linear(n_features, z_dim)
+        self.w_hsigma2 = nn.Linear(n_features, z_dim)
+        self.w_hhat = nn.Linear(z_dim, n_features)
         # ========================
 
     def _check_features(self, in_size):
@@ -85,13 +122,22 @@ class VAE(nn.Module):
             return h.shape[1:], torch.numel(h) // h.shape[0]
 
     def encode(self, x):
-        # TODO:
-        #  Sample a latent vector z given an input x from the posterior q(Z|x).
-        #  1. Use the features extracted from the input to obtain mu and
-        #     log_sigma2 (mean and log variance) of q(Z|x).
-        #  2. Apply the reparametrization trick to obtain z.
+
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        device = next(self.parameters()).device
+        x = x.to(device)
+
+        # Sample a latent vector z given an input x from the posterior q(Z|x)
+        h = self.features_encoder(x)
+        h = h.view(h.size(0), -1)
+
+        # Obtain mu and log_sigma2 (mean and log variance) of q(Z|x):
+        mu = self.w_hmu(h)
+        log_sigma2 = self.w_hsigma2(h)
+
+        # Apply the reparametrization trick to obtain z:
+        sigma_x = torch.sqrt(torch.exp(log_sigma2))
+        z = mu + torch.randn_like(sigma_x) * sigma_x
         # ========================
 
         return z, mu, log_sigma2
@@ -102,11 +148,19 @@ class VAE(nn.Module):
         #  1. Convert latent z to features h with a linear layer.
         #  2. Apply features decoder.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        device = next(self.parameters()).device
+        z = z.to(device)
+
+        # Convert latent z to features h with a linear layer.
+        h_features = self.w_hhat(z)
+        h_features = h_features.view(h_features.size(0), *self.features_shape)
+
+        # Apply features decoder:
+        x_reconstructed = self.features_decoder(h_features)
         # ========================
 
         # Scale to [-1, 1] (same dynamic range as original images).
-        return torch.tanh(x_rec)
+        return torch.tanh(x_reconstructed)
 
     def sample(self, n):
         samples = []
@@ -121,7 +175,7 @@ class VAE(nn.Module):
             #    Instead of sampling from N(psi(z), sigma2 I), we'll just take
             #    the mean, i.e. psi(z).
             # ====== YOUR CODE: ======
-            raise NotImplementedError()
+            samples = self.decode(torch.randn(size=(n, self.z_dim), device=device))
             # ========================
 
         # Detach and move to CPU for display purposes
@@ -148,13 +202,31 @@ def vae_loss(x, xr, z_mu, z_log_sigma2, x_sigma2):
     all three are scalars, averaged over the batch dimension.
     """
     loss, data_loss, kldiv_loss = None, None, None
-    # TODO:
-    #  Implement the VAE pointwise loss calculation.
-    #  Remember:
-    #  1. The covariance matrix of the posterior is diagonal.
-    #  2. You need to average over the batch dimension.
+
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+
+    # Flattens the inputs
+    x = x.view(x.shape[0], -1)
+    xr = xr.view(xr.shape[0], -1)
+
+    # Gets the dimensions:
+    dz = z_mu.shape[1]
+    dx = x.shape[1]
+
+    # Calculates the data-reconstruction loss:
+    data_loss = torch.mean(torch.sum((x - xr) ** 2,  dim=1)/(x_sigma2 * dx))
+
+    # Calculates the kldiv loss:
+    z_sigma2 = torch.exp(z_log_sigma2)
+    tr_sigma = torch.sum(z_sigma2, dim=1)
+    log_det = torch.log(torch.prod(z_sigma2, dim=1))
+
+    kldiv_loss = torch.mean(tr_sigma + torch.sum(z_mu ** 2, dim=1) - dz - log_det, dim=0)
+
+    # Calculates the loss:
+    loss = data_loss + kldiv_loss
+
+
     # ========================
 
     return loss, data_loss, kldiv_loss
