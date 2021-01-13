@@ -19,7 +19,49 @@ class Discriminator(nn.Module):
         #  You can then use either an affine layer or another conv layer to
         #  flatten the features.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        # Based on 'Unsupervised Representation Learning with Deep Convolutional
+        # Generative Adversarial Networks, Alec Redford and Luke Metz
+        modules = []
+        channels = [in_size[0], 128, 256, 512, 1024]
+        num_layers = len(channels)
+        kernel_sizes = [5] * (num_layers-1)
+        padding = 2
+        dilation = 1
+        batch_norm = True
+        dropout = 0
+        strides = [2] * (num_layers-1)
+        activation_param = 0.2
+
+        # Create the layers
+        for channel_idx in range(num_layers-1):
+            in_features, out_features, kernel_size, stride = \
+                channels[channel_idx], channels[channel_idx+1], kernel_sizes[channel_idx], strides[channel_idx]
+
+            layer = nn.Conv2d(in_channels=in_features, out_channels=out_features,
+                              kernel_size=kernel_size, padding=padding, dilation=dilation, stride=stride)
+            modules.append(layer)
+
+            if batch_norm and 0 < channel_idx:
+                batch_norm_layer = nn.BatchNorm2d(num_features=out_features)
+                modules.append(batch_norm_layer)
+
+            activation_layer = nn.LeakyReLU(activation_param)
+            modules.append(activation_layer)
+
+            if channel_idx % 2 == 0 and dropout > 0:
+                dropout_layer = nn.Dropout2d(p=dropout)
+                modules.append(dropout_layer)
+
+        self.features_extractor = nn.Sequential(*modules)
+
+        # Classifier
+        modules = []
+        flatten_layer = nn.Flatten()
+        modules.append(flatten_layer)
+        in_features = channels[-1] * 4 * 4
+        linear_layer = nn.Linear(in_features=in_features, out_features=1)
+        modules.append(linear_layer)
+        self.classifier = nn.Sequential(*modules)
         # ========================
 
     def forward(self, x):
@@ -32,7 +74,8 @@ class Discriminator(nn.Module):
         #  No need to apply sigmoid to obtain probability - we'll combine it
         #  with the loss due to improved numerical stability.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        features = self.features_extractor(x)
+        y = self.classifier(features)
         # ========================
         return y
 
@@ -53,7 +96,50 @@ class Generator(nn.Module):
         #  section or implement something new.
         #  You can assume a fixed image size.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        # Based on 'Unsupervised Representation Learning with Deep Convolutional
+        # Generative Adversarial Networks, Alec Redford and Luke Metz
+        channels = [1024, 512, 256, 128, out_channels]
+        num_layers = len(channels)
+        kernel_sizes = [5] * num_layers
+        padding = 2
+        dilation = 1
+        batch_norm = True
+        dropout = 0
+        strides = [2] * num_layers
+        output_padding = 1
+
+        # Linear layer
+        out_features = channels[0] * featuremap_size ** 2
+        linear_layer = nn.Linear(in_features=z_dim, out_features=out_features)
+        self.project = nn.Sequential(linear_layer)
+        self.features_size = [1024, featuremap_size, featuremap_size]
+
+        # Generator
+        modules = []
+        for channel_idx in range(num_layers - 1):
+            in_features, out_features, kernel_size, stride =\
+                channels[channel_idx], channels[channel_idx + 1], kernel_sizes[channel_idx], strides[channel_idx]
+            layer = nn.ConvTranspose2d(in_channels=in_features, out_channels=out_features,
+                                       kernel_size=kernel_size, padding=padding, dilation=dilation,
+                                       stride=stride, output_padding=output_padding)
+            modules.append(layer)
+
+            if batch_norm and channel_idx < num_layers-2:
+                batch_norm_layer = nn.BatchNorm2d(num_features=out_features)
+                modules.append(batch_norm_layer)
+
+            if channel_idx < num_layers-2:
+                activation_layer = nn.ReLU()
+            else:
+                # Tanh in last layer
+                activation_layer = nn.Tanh()
+            modules.append(activation_layer)
+
+            if channel_idx % 2 == 0 and dropout > 0:
+                dropout_layer = nn.Dropout2d(p=dropout)
+                modules.append(dropout_layer)
+
+        self.generator = nn.Sequential(*modules)
         # ========================
 
     def sample(self, n, with_grad=False):
@@ -70,7 +156,11 @@ class Generator(nn.Module):
         #  Generate n latent space samples and return their reconstructions.
         #  Don't use a loop.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        torch.autograd.set_grad_enabled(with_grad)
+        samples = torch.randn(size=[n, self.z_dim],
+                              device=device)
+        samples = self.forward(samples)
+        torch.autograd.set_grad_enabled(True)
         # ========================
         return samples
 
@@ -84,7 +174,11 @@ class Generator(nn.Module):
         #  Don't forget to make sure the output instances have the same
         #  dynamic range as the original (real) images.
         # ====== YOUR CODE: ======
-        raise NotImplementedError()
+        batch_size = z.shape[0]
+        projection = self.project(z)
+        projection = torch.reshape(projection, [batch_size, *self.features_size])
+        print(projection.shape)
+        x = self.generator(projection)
         # ========================
         return x
 
@@ -109,7 +203,21 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     #  Implement the discriminator loss.
     #  See pytorch's BCEWithLogitsLoss for a numerically stable implementation.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    # Real data loss
+    y_data_label = data_label * torch.ones_like(y_data)
+    if label_noise > 0:
+        noise = torch.rand(y_data.shape[0]) * label_noise - 0.5 * label_noise
+        y_data_label += noise
+    loss_data = nn.functional.binary_cross_entropy_with_logits(input=y_data,
+                                                               target=y_data_label)
+
+    # Generated data loss
+    y_generated_label = (1-data_label) * torch.ones_like(y_generated)
+    if label_noise > 0:
+        noise = torch.rand(y_data.shape[0]) * label_noise - 0.5 * label_noise
+        y_generated_label += noise
+    loss_generated = nn.functional.binary_cross_entropy_with_logits(input=y_generated,
+                                                                    target=y_generated_label)
     # ========================
     return loss_data + loss_generated
 
@@ -130,7 +238,9 @@ def generator_loss_fn(y_generated, data_label=0):
     #  Think about what you need to compare the input to, in order to
     #  formulate the loss in terms of Binary Cross Entropy.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    y_generated_label = torch.ones_like(y_generated) * data_label
+    loss = nn.functional.binary_cross_entropy_with_logits(input=y_generated,
+                                                          target=y_generated_label)
     # ========================
     return loss
 
