@@ -177,7 +177,6 @@ class Generator(nn.Module):
         batch_size = z.shape[0]
         projection = self.project(z)
         projection = torch.reshape(projection, [batch_size, *self.features_size])
-        print(projection.shape)
         x = self.generator(projection)
         # ========================
         return x
@@ -205,19 +204,20 @@ def discriminator_loss_fn(y_data, y_generated, data_label=0, label_noise=0.0):
     # ====== YOUR CODE: ======
     # Real data loss
     y_data_label = data_label * torch.ones_like(y_data)
+    device = y_data_label.device
     if label_noise > 0:
-        noise = torch.rand(y_data.shape[0]) * label_noise - 0.5 * label_noise
-        y_data_label += noise
-    loss_data = nn.functional.binary_cross_entropy_with_logits(input=y_data,
-                                                               target=y_data_label)
+        noise = torch.rand(y_data.shape) * label_noise - 0.5 * label_noise
+        y_data_label += noise.to(device)
+    loss_data = F.binary_cross_entropy_with_logits(input=y_data,
+                                                   target=y_data_label)
 
     # Generated data loss
     y_generated_label = (1-data_label) * torch.ones_like(y_generated)
     if label_noise > 0:
-        noise = torch.rand(y_data.shape[0]) * label_noise - 0.5 * label_noise
-        y_generated_label += noise
-    loss_generated = nn.functional.binary_cross_entropy_with_logits(input=y_generated,
-                                                                    target=y_generated_label)
+        noise = torch.rand(y_data.shape) * label_noise - 0.5 * label_noise
+        y_generated_label += noise.to(device)
+    loss_generated = F.binary_cross_entropy_with_logits(input=y_generated,
+                                                        target=y_generated_label)
     # ========================
     return loss_data + loss_generated
 
@@ -265,7 +265,20 @@ def train_batch(
     #  2. Calculate discriminator loss
     #  3. Update discriminator parameters
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    # Show the discriminator real and generated data
+    real_data = x_data
+    batch_size = real_data.shape[0]
+    generated_data = gen_model.sample(n=batch_size, with_grad=True)
+
+    # Calculate discriminator loss
+    y_data = dsc_model(real_data)
+    y_generated = dsc_model(generated_data)
+    dsc_loss = dsc_loss_fn(y_data, y_generated)
+
+    # Update discriminator parameters
+    dsc_optimizer.zero_grad()
+    dsc_loss.backward()
+    dsc_optimizer.step()
     # ========================
 
     # TODO: Generator update
@@ -273,7 +286,17 @@ def train_batch(
     #  2. Calculate generator loss
     #  3. Update generator parameters
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    # Show the discriminator generated data
+    generated_data = gen_model.sample(n=batch_size, with_grad=True)
+    y_generated = dsc_model(generated_data)
+
+    # Calculate generator loss
+    gen_loss = gen_loss_fn(y_generated)
+
+    # Update generator parameters
+    gen_optimizer.zero_grad()
+    gen_loss.backward()
+    gen_optimizer.step()
     # ========================
 
     return dsc_loss.item(), gen_loss.item()
@@ -296,7 +319,15 @@ def save_checkpoint(gen_model, dsc_losses, gen_losses, checkpoint_file):
     #  You should decide what logic to use for deciding when to save.
     #  If you save, set saved to True.
     # ====== YOUR CODE: ======
-    raise NotImplementedError()
+    last_gen_loss = gen_losses[-1]
+    last_dsc_loss = dsc_losses[-1]
+    if len(gen_losses) == 1:
+        saved = False
+        return saved
+
+    elif last_gen_loss < gen_losses[-2] and last_dsc_loss <= dsc_losses[-2]:
+        torch.save(gen_model, checkpoint_file)
+        saved = True
     # ========================
 
     return saved
