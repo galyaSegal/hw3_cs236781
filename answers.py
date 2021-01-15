@@ -99,33 +99,56 @@ def part2_vae_hyperparams():
 
 part2_q1 = r"""
 **Your answer:**
-The $\sigma^2$ hyperparameter normalizes the data loss term. \n
-Small values cause large 
+
+The $\sigma^2$ hyper-parameter is the weight of the data loss term.
+
+In other words, it is the weight of the reconstruction loss, which determine the 
+resemblance of the generated image to the original one.
+
+When $\sigma^2$ is small, the loss term of the reconstruction loss is bigger and
+as a result the images generated are forced to resemble the original images.
+
+When $\sigma^2$ is large, the loss term of the reconstruction loss is smaller and
+therefore the images created are more unique and less resemble the original images.
 """
 
 part2_q2 = r"""
 **Your answer:**
 
+1. The reconstruction loss determine the resemblance of the generated image to the original one.
+The KL loss is a regularizer preventing the decoder from copying x into z, which is not desired
+as we aim to find a more generalized representation of x.
 
-Write your answer using **markdown** and $\LaTeX$:
-```python
-# A code block
-a = 2
-```
-An equation: $e^{i\pi} -1 = 0$
+2. The KL loss determines the distance between $p(Z)$, which is a standartized normal distribution,
+to the latent space distribution $q(Z|X)$, which is a a normal distribution with expectancy of $\mu(x)$ and
+ variance of $\sigma(x)^2$. It quantifies the amount of compression by measuring the divergence
+ between p(z) which transmits zero information about x, and the decoder of VAE.
+ 
+3. This effect can be interpreted as better generalization. The data loss term forces the generated image to 
+resemble the original image, while the KL loss term forces the generated image to be more unique by forcing the 
+distance between the latent space distribution and normal distribution to be small. These two losses have 'adversarial' 
+effects, when $\sigma(x)^2$ weights the data loss term. 
+The combination of these two loss terms accounts for generated images which maintain the features of the train images
+while having some uniqueness in them. 
+
+We based our answers on the following article concerning VAE:
+Prokhorov, Victor, et al. "On the importance of the Kullback-Leibler divergence term in variational
+ autoencoders for text generation." WNGT 2019.
 
 """
 
 part2_q3 = r"""
 **Your answer:**
+
 We wish to create a reconstructed image such that the probability of sampling it from the original image set
- will be maximal. \n
+ will be maximal.
 In other words, we wish to create images with the maximum likelihood of being sampled from the original image space. 
 """
 
 part2_q4 = r"""
 **Your answer:**
-Since the variance is usually small and is within the interval od [0,1], the log transform allows mapping it into 
+
+Since the variance is usually small and is within the interval of [0,1], the log transform allows mapping it into 
 a much greater range of [-inf, 0]. As a result, the optimization algorithm can achieve better results. 
 In other words, the training is more efficient when modeling the log of the variance. 
 """
@@ -146,13 +169,13 @@ def part3_gan_hyperparams():
         label_noise=0.02,
         discriminator_optimizer=dict(
             type="SGD",  # Any name in nn.optim like SGD, Adam
-            lr=0.001,
+            lr=0.0002,
             momentum=0.5
             # You an add extra args for the optimizer here
         ),
         generator_optimizer=dict(
             type="Adam",  # Any name in nn.optim like SGD, Adam
-            lr=0.001,
+            lr=0.0002,
             betas=(0.5, 0.5)
             # You an add extra args for the optimizer here
         ),
@@ -166,35 +189,44 @@ def part3_gan_hyperparams():
 
 part3_q1 = r"""
 **Your answer:**
-In each batch during the training, the generator generates new samples in order to calculate
-the loss and update the parameters of both the generator model and the descriminator model.
-In order for gradient calculation, we sample from the GAN while maintaining gradients.
-When visualising the generated samples during the training, no gradients need to be 
-accumulated and so we sample from the GAN without maintaining gradients.
-
+The generator parameters are updated with respect to the gradients of the new samples, therefore we need 
+to maintain gradients when sampling from the GAN.
+However, the discriminator parameters are updated with respect to the gradients of the loss of the 
+discriminator only, although the loss depends on the generated images. In other words, we don't want the 
+parameters of the generator to be influenced by the loss and performance of the discriminator.
+Therefore, we don't need to maintain gradients of the new samples generated from the GAN.
 """
 
 part3_q2 = r"""
 **Your answer:**
+
 1. No, because if the discriminator is poorly trained, the generator will be able to 'fool'
 it while actually generating bad images. The generator loss on its own is not enough for 
 evaluating the quality of the generated images.
-2. It means that the discriminator converged to some minimum (i.e. the discriminator is 
-doing the best it can), while the generator is improving.
 
+2. It means that the generator is improving and is managing to 'fool' the discriminator with 
+greater success.
+It also means that the discriminator is less successful classifying the fake images (more false 
+negatives), but since the discriminator loss remains the same the discriminator is more successful
+classifying the real images.  
 """
 
 part3_q3 = r"""
 **Your answer:**
+The images created using the VAE are more blurry and less detailed, but have better resemblance 
+to the main features characterizing George Bush. 
+On the other hand, the images created using the GAN model are more detailed and colorful, but less
+resemble the personality.
 
+The VAE model is composed of a reconstruction part, and the model is 'punished' for large
+differences between the real image and the reconstructed images. As a result, the main features of 
+the personality are maintained.
 
-Write your answer using **markdown** and $\LaTeX$:
-```python
-# A code block
-a = 2
-```
-An equation: $e^{i\pi} -1 = 0$
-
+The GAN model is composed of a generator and a discriminator, when the discriminator 
+determines the parameters of the generator. Therefore, the results of the generator rely heavily on the 
+discriminator. For example, if the discriminator learned to classify based on the background or the blurriness, 
+the generator will not be motivated to maintain features of the face and but the result will be 
+less blurry.
 """
 
 # ==============

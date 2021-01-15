@@ -268,7 +268,7 @@ def train_batch(
     # Show the discriminator real and generated data
     real_data = x_data
     batch_size = real_data.shape[0]
-    generated_data = gen_model.sample(n=batch_size, with_grad=True)
+    generated_data = gen_model.sample(n=batch_size, with_grad=False)
 
     # Calculate discriminator loss
     y_data = dsc_model(real_data)
